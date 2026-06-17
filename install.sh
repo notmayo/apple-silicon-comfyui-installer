@@ -18,6 +18,10 @@ COMFY_REPO="https://github.com/comfy-org/ComfyUI.git"
 MANAGER_DIR="$COMFY_DIR/custom_nodes/comfyui-manager"
 MANAGER_REPO="https://github.com/Comfy-Org/ComfyUI-Manager.git"
 
+CIVICOMFY_DIR="$COMFY_DIR/custom_nodes/Civicomfy"
+CIVICOMFY_REPO="https://github.com/MoonGoblinDev/Civicomfy.git"
+CIVITAI_ENV_FILE="$HOME/.civitai.env"
+
 # -----------------------------
 # Colors
 # -----------------------------
@@ -29,7 +33,7 @@ if [ -t 1 ]; then
   GREEN="$(tput setaf 2)"
   YELLOW="$(tput setaf 3)"
   BLUE="$(tput setaf 4)"
-  MAGENTA="$(tput setaf 5)"
+ # MAGENTA="$(tput setaf 5)"
   CYAN="$(tput setaf 6)"
 else
   BOLD=""
@@ -38,7 +42,7 @@ else
   GREEN=""
   YELLOW=""
   BLUE=""
-  MAGENTA=""
+# MAGENTA=""
   CYAN=""
 fi
 
@@ -52,6 +56,12 @@ cd "$COMFY_DIR"
 # -----------------------------
 # Install Homebrew Python
 # -----------------------------
+
+if ! command -v brew >/dev/null 2>&1; then
+  echo "${RED}${BOLD}ERROR:${RESET} Homebrew is not installed."
+  echo "Install Homebrew first: https://brew.sh/"
+  exit 1
+fi
 
 brew install "python@${PYTHON_VERSION}"
 
@@ -113,14 +123,41 @@ fi
 "$COMFY_DIR/venv/bin/pip" install -r "$MANAGER_DIR/requirements.txt"
 
 # -----------------------------
+# Install Civicomfy
+# -----------------------------
+
+if [ ! -d "$CIVICOMFY_DIR/.git" ]; then
+  rm -rf "$CIVICOMFY_DIR"
+  git clone "$CIVICOMFY_REPO" "$CIVICOMFY_DIR"
+else
+  echo "${YELLOW}Civicomfy already appears installed at:${RESET} $CIVICOMFY_DIR"
+fi
+
+# -----------------------------
+# Create Civitai env file
+# -----------------------------
+
+if [ ! -f "$CIVITAI_ENV_FILE" ]; then
+  printf 'export CIVITAI_API_KEY=%q\n' "your_api_key_here" > "$CIVITAI_ENV_FILE"
+  chmod 600 "$CIVITAI_ENV_FILE"
+  echo "${GREEN}Created Civitai env file:${RESET} $CIVITAI_ENV_FILE"
+else
+  echo "${YELLOW}Civitai env file already exists:${RESET} $CIVITAI_ENV_FILE"
+fi
+
+# -----------------------------
 # Create start.sh
 # -----------------------------
 
-cat > "$COMFY_DIR/start.sh" <<'EOF'
+cat > "$COMFY_DIR/start.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$HOME/comfyui"
+if [ -f "\$HOME/.civitai.env" ] && ! grep -q 'your_api_key_here' "\$HOME/.civitai.env"; then
+  source "\$HOME/.civitai.env"
+fi
+
+cd "$COMFY_DIR"
 
 ./venv/bin/python main.py --listen 0.0.0.0 --port 8188
 EOF
@@ -217,6 +254,55 @@ echo "  ${BLUE}http://${LAN_IP}:8188${RESET}"
 echo
 echo "${CYAN}${BOLD}============================================================${RESET}"
 echo
+
+# -----------------------------
+# Optional Civitai API key update
+# -----------------------------
+
+echo
+echo "${CYAN}${BOLD}Civitai API Key Setup${RESET}"
+echo
+echo "Civicomfy can use a Civitai API key to download models from Civitai."
+echo
+echo "To create one:"
+echo "  1. Log in to Civitai"
+echo "  2. Go to Account Settings"
+echo "  3. Find API Keys"
+echo "  4. Create/copy an API key"
+echo
+echo "Your local env file is:"
+echo "  ${CIVITAI_ENV_FILE}"
+echo
+
+if grep -q 'your_api_key_here' "$CIVITAI_ENV_FILE" 2>/dev/null; then
+  read -r -p "$(printf "%sUpdate Civitai API key now? [y/N]: %s" "$YELLOW" "$RESET")" UPDATE_CIVITAI_KEY
+
+  case "$UPDATE_CIVITAI_KEY" in
+    y|Y|yes|YES)
+      read -r -s -p "Paste Civitai API key: " CIVITAI_API_KEY
+      echo
+
+      if [ -n "$CIVITAI_API_KEY" ]; then
+        printf 'export CIVITAI_API_KEY=%q\n' "$CIVITAI_API_KEY" > "$CIVITAI_ENV_FILE"
+        chmod 600 "$CIVITAI_ENV_FILE"
+        echo "${GREEN}Updated Civitai API key.${RESET}"
+      else
+        echo "${YELLOW}No API key entered. Leaving placeholder in place.${RESET}"
+      fi
+      ;;
+    *)
+      echo "${YELLOW}Leaving placeholder Civitai API key in place.${RESET}"
+      echo "You can update it later with:"
+      echo "  nano ${CIVITAI_ENV_FILE}"
+      ;;
+  esac
+else
+  echo "${GREEN}Civitai API key already appears configured.${RESET}"
+fi
+
+# -----------------------------
+# Prompt to start ComfyUI
+# -----------------------------
 
 read -r -p "$(printf "%sStart ComfyUI now? [y/N]: %s" "$YELLOW" "$RESET")" START_COMFY
 
